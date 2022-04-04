@@ -7,19 +7,27 @@
 
 # inspired by https://forum.mikrotik.com/viewtopic.php?t=58069#p297580
 
+:global ROSCOMAROUND;
+
 # test run: /system script run RosKomAround
 
+# check variable exist
 :if ([:typeof [$ROSCOMAROUND]] = "nil") do={
+    :global ROSCOMAROUND "idle"
+}
 
-    # block next run
-    :global ROSCOMAROUND "starting..."; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
+:if ($ROSCOMAROUND != "idle") do={
+    # ignore concurrent run
+    :local msg "already running"; :put $msg; :log debug $msg
+} else={
+    # concurrency lock
+    :set ROSCOMAROUND "starting..."; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
 
     :local timeStamp "$[/system clock get date] $[/system clock get time]"
 
     :foreach hostName in=$hosts do={
 
         :put ""
-
         :set ROSCOMAROUND "--- $hostName resolving..."; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
 
         # force dns entries to be cached
@@ -34,7 +42,6 @@
 
             :foreach recordDns in=[/ip dns cache all print as-value where (name=($dnsTree->$treePointer) && (type="CNAME" || type="A"))] do={
                 :if ($recordDns->"type"="A") do={
-
                     :set ROSCOMAROUND "A: $($recordDns->"name") $($recordDns->"data")"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
 
                     # upsert etnry
@@ -47,9 +54,7 @@
                 }
 
                 :if ($recordDns->"type"="CNAME") do={
-
                     :set ROSCOMAROUND "CNAME: $($recordDns->"name") $($recordDns->"data")"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
-
                     :if ([:typeof [:find $dnsTree ($recordDns->"data")]] = "nil") do={
                         :set dnsTree ($dnsTree, $recordDns->"data")
                     } else={
@@ -67,7 +72,6 @@
 
         :foreach item in=[/ip firewall address-list print as-value where (list=$listName && comment~"^$commentPrefix $hostName " && comment~"^$commentPrefix $hostName $commentPrefix $timeStamp\$"=false)] do={
             :set ROSCOMAROUND "- $($item->"address") $($item->"comment")"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
-
             /ip firewall address-list remove ($item->".id")
         }
 
@@ -75,5 +79,5 @@
     }
 
     # allow next run
-    :set ROSCOMAROUND
+    :set ROSCOMAROUND "idle"
 }
