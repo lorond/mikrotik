@@ -3,7 +3,7 @@
 }
 
 :local listName "unblocking"
-:local commentPrefix "RKA"
+:local commentPrefix "---"
 
 # inspired by https://forum.mikrotik.com/viewtopic.php?t=58069#p297580
 
@@ -40,9 +40,9 @@
                     # upsert etnry
                     :local updateID [/ip firewall address-list find list=$listName address=($recordDns->"data")]
                     :if ([:len $updateID] = 0) do={
-                        /ip firewall address-list add list=$listName address=($recordDns->"data") comment="$commentPrefix $hostName $timeStamp"
+                        /ip firewall address-list add list=$listName address=($recordDns->"data") comment="$commentPrefix $hostName $commentPrefix $timeStamp"
                     } else={
-                        /ip firewall address-list set $updateID comment="$commentPrefix $hostName $timeStamp"
+                        /ip firewall address-list set $updateID comment="$commentPrefix $hostName $commentPrefix $timeStamp"
                     }
                 }
 
@@ -65,8 +65,7 @@
         # remove old entries
         :set ROSCOMAROUND "removing old entries: $commentPrefix $hostName"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
 
-        :foreach item in=[/ip firewall address-list print as-value where (list=$listName && comment~"^$commentPrefix $hostName " && comment~"^$commentPrefix $hostName $timeStamp\$"=false)] do={
-
+        :foreach item in=[/ip firewall address-list print as-value where (list=$listName && comment~"^$commentPrefix $hostName " && comment~"^$commentPrefix $hostName $commentPrefix $timeStamp\$"=false)] do={
             :set ROSCOMAROUND "- $($item->"address") $($item->"comment")"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
 
             /ip firewall address-list remove ($item->".id")
