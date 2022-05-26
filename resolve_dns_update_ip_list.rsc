@@ -51,58 +51,64 @@
         :set ROSCOMAROUND "--- $hostName resolving..."; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
 
         # force dns entries to be cached
-        :resolve $hostName
+        :local resolved true
+        :do { :resolve $hostName } on-error={ :set resolved false }
 
-        :local dnsTree { $hostName }
-        :local treePointer 0
+        :if ($resolved) do={
 
-        :while ($treePointer < [:len $dnsTree]) do={
+            :local dnsTree { $hostName }
+            :local treePointer 0
 
-            :set ROSCOMAROUND "[$treePointer] $($dnsTree->$treePointer)"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
+            :while ($treePointer < [:len $dnsTree]) do={
 
-            :foreach recordDns in=[/ip dns cache all print as-value where (name=($dnsTree->$treePointer) && (type="CNAME" || type="A"))] do={
-                :if ($recordDns->"type"="A") do={
-                    :set ROSCOMAROUND "A: $($recordDns->"name") $($recordDns->"data")"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
+                :set ROSCOMAROUND "[$treePointer] $($dnsTree->$treePointer)"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
 
-                    :local comment "-- $unixTime -- $hostName -- $timeStamp"
+                :foreach recordDns in=[/ip dns cache all print as-value where (name=($dnsTree->$treePointer) && (type="CNAME" || type="A"))] do={
+                    :if ($recordDns->"type"="A") do={
+                        :set ROSCOMAROUND "A: $($recordDns->"name") $($recordDns->"data")"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
 
-                    # upsert etnry
-                    :local updateID [/ip firewall address-list find list=$listName address=($recordDns->"data")]
-                    :if ([:len $updateID] = 0) do={
-                        :set ROSCOMAROUND "+ $($recordDns->"data") $comment"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
-                        /ip firewall address-list add list=$listName address=($recordDns->"data") comment=$comment
-                    } else={
-                        #:set ROSCOMAROUND "# $($recordDns->"data") $comment"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
-                        /ip firewall address-list set $updateID comment=$comment
+                        :local comment "-- $unixTime -- $hostName -- $timeStamp"
+
+                        # upsert etnry
+                        :local updateID [/ip firewall address-list find list=$listName address=($recordDns->"data")]
+                        :if ([:len $updateID] = 0) do={
+                            :set ROSCOMAROUND "+ $($recordDns->"data") $comment"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
+                            /ip firewall address-list add list=$listName address=($recordDns->"data") comment=$comment
+                        } else={
+                            #:set ROSCOMAROUND "# $($recordDns->"data") $comment"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
+                            /ip firewall address-list set $updateID comment=$comment
+                        }
                     }
-                }
 
-                :if ($recordDns->"type"="CNAME") do={
-                    :set ROSCOMAROUND "CNAME: $($recordDns->"name") $($recordDns->"data")"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
-                    :if ([:typeof [:find $dnsTree ($recordDns->"data")]] = "nil") do={
-                        :set dnsTree ($dnsTree, $recordDns->"data")
-                    } else={
-                        :set ROSCOMAROUND "SKIPPING RECURSION"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
+                    :if ($recordDns->"type"="CNAME") do={
+                        :set ROSCOMAROUND "CNAME: $($recordDns->"name") $($recordDns->"data")"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
+                        :if ([:typeof [:find $dnsTree ($recordDns->"data")]] = "nil") do={
+                            :set dnsTree ($dnsTree, $recordDns->"data")
+                        } else={
+                            :set ROSCOMAROUND "SKIPPING RECURSION"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
+                        }
                     }
+
+                    # todo DNAME, ANAME ?
                 }
-
-                # todo DNAME, ANAME ?
+                :set treePointer ($treePointer + 1)
             }
-            :set treePointer ($treePointer + 1)
-        }
 
-        # remove old entries
-        :set ROSCOMAROUND "old $hostName"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
+            # remove old entries
+            :set ROSCOMAROUND "old $hostName"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
 
-        :foreach item in=[/ip firewall address-list print as-value where (list=$listName && comment~"^-- [0-9]+ -- $hostName -- " && comment~"^-- $unixTime -- $hostName -- "=false)] do={
-            :local oldUnixTime [:pick ($item->"comment") 3 [:find ($item->"comment") " -- " -1]]
-            if (($unixTime - $oldUnixTime) > $keepOldSeconds) do={
-                :set ROSCOMAROUND "- $($item->"address") $($item->"comment")"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
-                /ip firewall address-list remove ($item->".id")
+            :foreach item in=[/ip firewall address-list print as-value where (list=$listName && comment~"^-- [0-9]+ -- $hostName -- " && comment~"^-- $unixTime -- $hostName -- "=false)] do={
+                :local oldUnixTime [:pick ($item->"comment") 3 [:find ($item->"comment") " -- " -1]]
+                if (($unixTime - $oldUnixTime) > $keepOldSeconds) do={
+                    :set ROSCOMAROUND "- $($item->"address") $($item->"comment")"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
+                    /ip firewall address-list remove ($item->".id")
+                }
             }
-        }
 
-        :set ROSCOMAROUND "=== $([:tostr $dnsTree])"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
+            :set ROSCOMAROUND "=== $([:tostr $dnsTree])"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
+        } else={
+            :set ROSCOMAROUND "--- $hostName resolution failed"; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
+        }
     }
 
     # allow next run
