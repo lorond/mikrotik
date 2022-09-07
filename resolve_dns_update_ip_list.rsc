@@ -34,10 +34,10 @@
     :return ($ds * 24 * 60 * 60 + $ts + 946684800 - [/system clock get gmt-offset])
 }
 
-:if ($ROSCOMAROUND != "idle") do={
-    # ignore concurrent run
-    :local msg "already running"; :log debug $msg; :put $msg
-} else={
+#:if ($ROSCOMAROUND != "idle") do={
+#    # ignore concurrent run
+#    :local msg "already running"; :log debug $msg; :put $msg
+#} else={
     # concurrency lock
     :set ROSCOMAROUND "starting..."; :log debug $ROSCOMAROUND; :put $ROSCOMAROUND
 
@@ -113,4 +113,4 @@
 
     # allow next run
     :set ROSCOMAROUND "idle"
-}
+#}
